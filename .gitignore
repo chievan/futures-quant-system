@@ -34,5 +34,8 @@ frontend/dist/
 # Celery
 celerybeat-schedule
 
+# Claude
+.claude/
+
 # InfluxDB / Postgres data (docker volumes)
 data/

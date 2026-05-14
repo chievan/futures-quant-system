@@ -174,9 +174,13 @@ async def factor_mining(req: FactorMiningRequest):
     low = req.low or req.close
     volume = req.volume or [0] * len(req.close)
 
-    factor_values = FactorMiner.compute_factor(
-        req.close, high, low, volume, req.expression,
-    )
+    try:
+        factor_values = FactorMiner.compute_factor(
+            req.close, high, low, volume, req.expression,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     forward_returns = FactorMiner.compute_forward_returns(
         req.close, req.forward_periods,
     )
