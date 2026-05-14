@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-quant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quant_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-quantdb}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quant} -d ${POSTGRES_DB:-quantdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  influxdb:
+    image: influxdb:2.7-alpine
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin123456
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-quant}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-market_data}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-quant_token}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdata:/var/lib/influxdb2
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      TQ_USERNAME: ${TQ_USERNAME}
+      TQ_PASSWORD: ${TQ_PASSWORD}
+      TQ_BROKER: ${TQ_BROKER}
+      TQ_ACCOUNT_ID: ${TQ_ACCOUNT_ID}
+      TQ_TRADE_PWD: ${TQ_TRADE_PWD}
+      TQ_MODE: ${TQ_MODE:-backtest}
+      POSTGRES_USER: ${POSTGRES_USER:-quant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quant_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-quantdb}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-quant_token}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-quant}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-market_data}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery_worker:
+    build: ./backend
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      TQ_USERNAME: ${TQ_USERNAME}
+      TQ_PASSWORD: ${TQ_PASSWORD}
+      TQ_BROKER: ${TQ_BROKER}
+      TQ_ACCOUNT_ID: ${TQ_ACCOUNT_ID}
+      TQ_TRADE_PWD: ${TQ_TRADE_PWD}
+      TQ_MODE: ${TQ_MODE:-backtest}
+      POSTGRES_USER: ${POSTGRES_USER:-quant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quant_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-quantdb}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-quant_token}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-quant}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-market_data}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  influxdata:
